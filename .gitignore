@@ -1,0 +1,7 @@
+/.test_directory/
+/.idea/*
+/build
+/dist
+__pycache__
+*.pyc
+NaGraph.spec
