@@ -1,2 +1,4 @@
 originpro==1.1.15
 pandas==3.0.0
+black==26.1.0
+pyinstaller==6.18.0
