@@ -45,7 +45,7 @@ def rietveld() -> str:
             pd.DataFrame(l_vals, columns=["l"]),
             pd.DataFrame(ph_vals, columns=["Phase"]),
             pd.DataFrame(th_vals, columns=["2θ"]),
-            pd.DataFrame([-0.45 for _ in range(len(h_vals))], columns=["Shift"])
+            pd.DataFrame([-0.03 for _ in range(len(h_vals))], columns=["hkl"])
         ],
         axis=1,
     )
@@ -60,7 +60,9 @@ def rietveld() -> str:
     obs_i_vals = [val / obs_i_vals_max for val in obs_i_vals]
     calc_i_vals = [val / obs_i_vals_max for val in calc_i_vals]
     bckg_vals = [val / obs_i_vals_max for val in bckg_vals]
-    dif_vals = [obs_i - calc_i - 0.15 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
+    dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
+    dif_min_y, dif_max_y = min(dif_vals), max(dif_vals)
+    dif_vals = [dif_val - (dif_max_y - dif_min_y) for dif_val in dif_vals]
     xrd_df = pd.concat(
         [
             pd.DataFrame(th_vals, columns=["2θ"]),
@@ -72,7 +74,7 @@ def rietveld() -> str:
         axis=1,
     )
     min_x, max_x = xrd_df["2θ"].min(), xrd_df["2θ"].max()
-    min_y, max_y = -0.25, 1.045
+    i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
     print("Import successful")
 
     print("Starting OriginPro...")
@@ -86,7 +88,7 @@ def rietveld() -> str:
     layer_1 = graph[0]
 
     layer_1.xlim = (min_x, max_x, 10)
-    layer_1.ylim = (min_y, max_y)
+    layer_1.ylim = (i_min_y, i_max_y)
 
     obs_i_plot = layer_1.add_plot(xrd_worksheet, 1, 0, type="s")
     calc_i_plot = layer_1.add_plot(xrd_worksheet, 2, 0, type="l")
@@ -97,18 +99,18 @@ def rietveld() -> str:
     obs_i_plot.color = "Black"
     calc_i_plot.color = "Red"
     bckg_i_plot.color = "Orange"
-    dif_i_plot.color = "Red"
-    hkl_plot.color = "Navy"
+    dif_i_plot.color = "Orange"
+    hkl_plot.color = "Black"
 
     obs_i_plot.set_int("symbol.kind", 2)
     obs_i_plot.set_int("symbol.interior", 1)
-    obs_i_plot.set_int("symbol.size", 5)
+    obs_i_plot.set_int("symbol.size", 6)
     calc_i_plot.set_int("line.width", 2)
     bckg_i_plot.set_int("line.width", 2)
     dif_i_plot.set_int("line.width", 2)
     hkl_plot.set_int("symbol.kind", 10)
     hkl_plot.set_int("symbol.interior", 0)
-    hkl_plot.set_int("symbol.size", 8)
+    hkl_plot.set_int("symbol.size", 12)
 
     layer_1.axis("x").title = "2Θ, [deg.]"
     layer_1.axis("y").title = "I, [r.u.]"
