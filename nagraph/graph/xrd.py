@@ -1,4 +1,4 @@
-from tkinter.filedialog import askopenfilenames, asksaveasfilename, askopenfilename
+from tkinter.filedialog import askopenfilenames, asksaveasfilename
 import originpro as op
 from pathlib import Path
 import pandas as pd
@@ -10,6 +10,10 @@ def xrd() -> str:
     load_paths = askopenfilenames(filetypes=[("xyd", "*.xyd")], title="Open XRD files")
     if not load_paths:
         return "Cancelled"
+    load_paths = [Path(path) for path in load_paths]
+    for path in load_paths:
+        if not path.exists() or not path.is_file():
+            return "Invalid file path: " + str(path)
     print(", ".join([Path(path).stem for path in load_paths]))
 
     print("Save project as ", end="")
@@ -28,11 +32,6 @@ def xrd() -> str:
     df = pd.DataFrame()
     i = 0
     for path in load_paths:
-        path = Path(path)
-        if not path.exists() or not path.is_file():
-            return "Invalid file path: " + str(path)
-        # if not path.suffix == '.xyd':
-        #    path = parser.xrd(path)
         data = path.read_text()[:-1]  # Avg. xrd file size - 320kB
         th_vals = []
         i_vals = []

@@ -1,4 +1,4 @@
-from tkinter.filedialog import askopenfilenames, asksaveasfilename, askopenfilename
+from tkinter.filedialog import asksaveasfilename, askopenfilename
 import originpro as op
 from pathlib import Path
 import pandas as pd
@@ -10,7 +10,10 @@ def rietveld() -> str:
     load_path = askopenfilename(filetypes=[("prf", "*.prf")], title="Open .prf file")
     if not load_path:
         return "Cancelled"
-    print(Path(load_path).stem + ".prf")
+    path = Path(load_path)
+    if not path.exists() or not path.is_file():
+        return "Invalid file path: " + str(path)
+    print(path.stem + ".prf")
 
     print("Save project as ", end="")
     save_path = asksaveasfilename(
@@ -25,11 +28,9 @@ def rietveld() -> str:
     print(save_path.stem + ".opju")
 
     print("Importing data...")
-    path = Path(load_path)
-    if not path.exists() or not path.is_file():
-        return "Invalid file path: " + str(path)
     data = path.read_text()[26:-6]
     hkl_data, xrd_data = data.split("\n 999\n")
+
     h_vals, k_vals, l_vals, ph_vals, th_vals = ([] for _ in range(5))
     for line in hkl_data.split("\n"):
         h, k, l, _, ph, th, *_ = line.split()
@@ -49,6 +50,7 @@ def rietveld() -> str:
         ],
         axis=1,
     )
+
     th_vals, obs_i_vals, calc_i_vals, bckg_vals, dif_vals = ([] for _ in range(5))
     for line in xrd_data.split("\n"):
         th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
@@ -62,7 +64,7 @@ def rietveld() -> str:
     bckg_vals = [val / obs_i_vals_max for val in bckg_vals]
     dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
     dif_min_y, dif_max_y = min(dif_vals), max(dif_vals)
-    dif_vals = [dif_val - (dif_max_y - dif_min_y) for dif_val in dif_vals]
+    dif_vals = [val - (dif_max_y - dif_min_y) for val in dif_vals]
     xrd_df = pd.concat(
         [
             pd.DataFrame(th_vals, columns=["2θ"]),
@@ -73,6 +75,7 @@ def rietveld() -> str:
         ],
         axis=1,
     )
+
     min_x, max_x = xrd_df["2θ"].min(), xrd_df["2θ"].max()
     i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
     print("Import successful")
