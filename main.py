@@ -1,4 +1,4 @@
-from nagraph.graph import xrd, rietveld
+from nagraph.graph import xrd, rietveld, cycling
 
 
 def main():
@@ -14,6 +14,10 @@ def main():
                 print(xrd.xrd())
             elif mode == "2":
                 print(rietveld.rietveld())
+            elif mode == "3":
+                print(cycling.steps())
+            elif mode == "4":
+                print(cycling.long())
         else:
             print("Invalid input")
     input("Press Enter to continue...")
