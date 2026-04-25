@@ -14,7 +14,7 @@ def xrd() -> str:
     for path in load_paths:
         if not path.exists() or not path.is_file():
             return "Invalid file path: " + str(path)
-    print(", ".join([Path(path).stem for path in load_paths]))
+    print(", ".join([path.stem for path in load_paths]))
 
     print("Save project as ", end="")
     save_path = asksaveasfilename(

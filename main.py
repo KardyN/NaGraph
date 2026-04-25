@@ -5,7 +5,9 @@ def main():
     while True:
         print("What do you want to do?\n0. Exit."
               "\n1. Graph XRD."
-              "\n2. Graph Rietveld refinement (Jana2006)")
+              "\n2. Graph Rietveld refinement (Jana2006)"
+              "\n3. Cycling steps"
+              "\n4. Cycling long")
         mode = input()
         if mode.isdigit() & len(mode) == 1:
             if mode == "0":
