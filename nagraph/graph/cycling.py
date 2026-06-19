@@ -3,7 +3,7 @@ import pandas as pd
 from nagraph.helpers import save_project_with_suffix, open_files_of_types
 
 
-def steps():
+def steps(verbose=False) -> int:
     
     input_paths = open_files_of_types(["xlsx"], 10, True)
 
@@ -17,7 +17,7 @@ def steps():
         df = df.append(pd.read_excel(path, sheet_name="Record", header=0))
 
     print("Import successful")
-    return True
+    return 0
     #
     # print("Starting OriginPro...")
     #
@@ -28,5 +28,5 @@ def steps():
     # return "Saved project at " + (str(output_path.with_suffix(".opju")))    return True
 
 
-def long():
-    return True
+def long(verbose=False) -> int:
+    return 0

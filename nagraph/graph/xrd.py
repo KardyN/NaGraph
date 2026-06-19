@@ -1,3 +1,5 @@
+import math
+
 import originpro as op
 import pandas as pd
 
@@ -134,7 +136,7 @@ def rietveld(verbose=False) -> int:
         axis=1,
     )
 
-    min_x, max_x = xrd_df["2θ"].min(), xrd_df["2θ"].max()
+    min_x, max_x = math.floor(xrd_df["2θ"].min()), math.ceil(xrd_df["2θ"].max())
     i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
     if verbose:
         print("Import successful")
@@ -162,7 +164,7 @@ def rietveld(verbose=False) -> int:
     obs_i_plot.color = "Black"
     calc_i_plot.color = "Red"
     bckg_i_plot.color = "Orange"
-    dif_i_plot.color = "Orange"
+    dif_i_plot.color = "Wine"
     hkl_plot.color = "Black"
 
     obs_i_plot.set_int("symbol.kind", 2)
@@ -173,7 +175,7 @@ def rietveld(verbose=False) -> int:
     dif_i_plot.set_int("line.width", 2)
     hkl_plot.set_int("symbol.kind", 10)
     hkl_plot.set_int("symbol.interior", 0)
-    hkl_plot.set_int("symbol.size", 12)
+    hkl_plot.set_int("symbol.size", 9)
 
     layer_1.axis("x").title = "2Θ, [deg.]"
     layer_1.axis("y").title = "I, [r.u.]"

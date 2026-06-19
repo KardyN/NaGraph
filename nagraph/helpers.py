@@ -4,10 +4,7 @@ from typing import List
 
 
 def is_jana2006_folder(folder: Path) -> bool:
-    if folder.is_dir():
-        if len(list(folder.glob("*.prf"))):
-            return True
-    return False
+    return True if folder.is_dir() and len(list(folder.glob("*.prf"))) else False
 
 
 def open_files_of_types(suffixes: List[str], max_files=1, verbose=False) -> List[Path] | Path:
@@ -19,6 +16,8 @@ def open_files_of_types(suffixes: List[str], max_files=1, verbose=False) -> List
     loaded_paths = askopenfilenames(
         filetypes=[(suffix.upper(), "*." + suffix) for suffix in suffixes], title="Open files"
     )
+    if not loaded_paths:
+        raise Exception("Cancelled file selection")
     if len(loaded_paths) > max_files:
         raise Exception("Too many files chosen")
     loaded_paths = [Path(path) for path in loaded_paths]
@@ -44,7 +43,7 @@ def save_project_with_suffix(suffix: str, verbose=False) -> Path:
         + suffix
     )
     if not save_path:
-        raise Exception("Invalid path")
+        raise Exception("Cancelled save path selection")
     save_path = Path(save_path)
     if verbose:
         print(save_path.stem + ".opju")
