@@ -1,20 +1,21 @@
-from nagraph.graph import simple_xrd
+from nagraph.graph import xrd
 
 
-def xrd_simple():
-    print(simple_xrd.xrd())
+def graph_xrd():
+    xrd.xrd(verbose=True)
     return None
 
 
-def xrd_refined():
+def graph_rietveld():
+    xrd.rietveld(verbose=True)
     return None
 
 
-def gc_rates():
+def graph_gc_rates():
     return None
 
 
-def gc_long():
+def graph_gc_long():
     return None
 
 
