@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from tkinter.filedialog import asksaveasfilename, askopenfilenames
 from typing import List
@@ -14,7 +15,7 @@ def open_files_of_types(suffixes: List[str], max_files=1, verbose=False) -> List
             print(suffix, end=", ")
         print("files: ", end="")
     loaded_paths = askopenfilenames(
-        filetypes=[(suffix.upper(), "*." + suffix) for suffix in suffixes], title="Open files"
+        filetypes=[("All files", ["*." + suffix for suffix in suffixes])] + [(suffix.upper(), "*." + suffix) for suffix in suffixes], title="Open files"
     )
     if not loaded_paths:
         raise Exception("Cancelled file selection")
@@ -39,12 +40,21 @@ def save_project_with_suffix(suffix: str, verbose=False) -> Path:
             defaultextension=".opju",
             confirmoverwrite=True,
         )
-        + "_"
-        + suffix
     )
     if not save_path:
         raise Exception("Cancelled save path selection")
-    save_path = Path(save_path)
+    save_path = Path(save_path + "_" + suffix)
     if verbose:
         print(save_path.stem + ".opju")
     return save_path
+
+
+def assert_file_is_hkl_peaks(file: Path) -> bool:
+    pattern = re.compile("^( )*[0-9.]*( )*[0-9.]*( )*$")
+    if pattern.match(file.read_text().split("\n")[0]):
+        print("THATS A MATCH")
+    return True if pattern.match(file.read_text().split("\n")[0]) else False
+
+PATTERNS = [
+    ".prf"
+]

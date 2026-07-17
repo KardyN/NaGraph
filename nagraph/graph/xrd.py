@@ -1,9 +1,13 @@
 import math
+import re
+from pathlib import Path
 
 import originpro as op
 import pandas as pd
+from openpyxl.descriptors import String
+from openpyxl.pivot.fields import Boolean
 
-from nagraph.helpers import save_project_with_suffix, open_files_of_types
+from util import save_project_with_suffix, open_files_of_types, assert_file_is_hkl_peaks
 
 
 def xrd(verbose=False) -> int:
@@ -82,23 +86,35 @@ def xrd(verbose=False) -> int:
 
 def rietveld(verbose=False) -> int:
 
-    input_path = open_files_of_types(["prf"], 1, True)
+    input_paths = open_files_of_types(["prf", "txt", "inp", "cif"], 5, verbose)
 
-    output_path = save_project_with_suffix("rietveld", True)
+    output_path = save_project_with_suffix("rietveld", verbose)
 
     if verbose:
         print("Importing data...")
-    data = input_path.read_text()[26:-6]
-    hkl_data, xrd_data = data.split("\n 999\n")
+
+    if len(input_paths) == 1:
+        hkl_data, xrd_data = input_paths.read_text()[26:-6].split("\n 999\n")
 
     h_vals, k_vals, l_vals, ph_vals, th_vals = ([] for _ in range(5))
-    for line in hkl_data.split("\n"):
-        h, k, l, _, ph, th, *_ = line.split()
-        h_vals.append(int(h))
-        k_vals.append(int(k))
-        l_vals.append(int(l))
-        ph_vals.append(int(ph))
-        th_vals.append(float(th))
+
+    if len(input_paths) == 1:
+        for line in hkl_data.split("\n"):
+            h, k, l, _, ph, th, *_ = line.split()
+            h_vals.append(int(h))
+            k_vals.append(int(k))
+            l_vals.append(int(l))
+            ph_vals.append(int(ph))
+            th_vals.append(float(th))
+    else:
+        for line in input_paths[0].read_text().split("\n"):
+            h, k, l, _, ph, th, *_ = [0, 0, 0, 0, 0] + line.split()
+            h_vals.append(int(h))
+            k_vals.append(int(k))
+            l_vals.append(int(l))
+            ph_vals.append(int(ph))
+            th_vals.append(float(th))
+
     hkl_df = pd.concat(
         [
             pd.DataFrame(h_vals, columns=["h"]),
@@ -112,12 +128,17 @@ def rietveld(verbose=False) -> int:
     )
 
     th_vals, obs_i_vals, calc_i_vals, bckg_vals, dif_vals = ([] for _ in range(5))
-    for line in xrd_data.split("\n"):
-        th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
-        th_vals.append(float(th))
-        obs_i_vals.append(float(obs_i))
-        calc_i_vals.append(float(calc_i))
-        bckg_vals.append(float(bckg))
+
+    if len(input_paths) == 1:
+        for line in xrd_data.split("\n"):
+            th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
+            th_vals.append(float(th))
+            obs_i_vals.append(float(obs_i))
+            calc_i_vals.append(float(calc_i))
+            bckg_vals.append(float(bckg))
+    else:
+        
+
     obs_i_vals_max = max(obs_i_vals)
     obs_i_vals = [val / obs_i_vals_max for val in obs_i_vals]
     calc_i_vals = [val / obs_i_vals_max for val in calc_i_vals]
@@ -125,6 +146,7 @@ def rietveld(verbose=False) -> int:
     dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
     dif_min_y, dif_max_y = min(dif_vals), max(dif_vals)
     dif_vals = [val - (dif_max_y - dif_min_y) for val in dif_vals]
+
     xrd_df = pd.concat(
         [
             pd.DataFrame(th_vals, columns=["2θ"]),
@@ -136,8 +158,6 @@ def rietveld(verbose=False) -> int:
         axis=1,
     )
 
-    min_x, max_x = math.floor(xrd_df["2θ"].min()), math.ceil(xrd_df["2θ"].max())
-    i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
     if verbose:
         print("Import successful")
 
@@ -152,6 +172,8 @@ def rietveld(verbose=False) -> int:
     graph.set_int("aa", 1)
     layer_1 = graph[0]
 
+    min_x, max_x = math.floor(xrd_df["2θ"].min()), math.ceil(xrd_df["2θ"].max())
+    i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
     layer_1.xlim = (min_x, max_x, 10)
     layer_1.ylim = (i_min_y, i_max_y)
 
