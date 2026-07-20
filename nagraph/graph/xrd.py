@@ -1,14 +1,15 @@
 import math
 
 import originpro as op
-import pandas as pd
 
-from util import (
+from util.util import (
     save_project_with_suffix,
     open_files_of_types,
     match_file_type,
-    threaded,
+    match_text_type,
+    get_last_word, format_uncertain_float,
 )
+from util.deco import threaded
 
 
 @threaded
@@ -25,18 +26,20 @@ def xrd(verbose=False) -> int:
 
     for i, path in enumerate(input_paths):
         if not match_file_type(path, "*.xyd"):
-            raise Exception("Invalid internal data structure")
+            raise Exception("Invalid internal file structure")
 
         th_vals, i_vals = ([] for _ in range(2))
 
-        for line in path.read_text()[:-1].split("\n"):
+        for line in path.read_text()[:-1].splitlines():
             x, y = line.strip().split()
             th_vals.append(float(x))
             i_vals.append(float(y))
 
         i_vals_max = max(i_vals)
         i_vals_min = min(i_vals)
-        i_vals = [(val - i_vals_min) / (i_vals_max - i_vals_min) + 0.1 * i for val in i_vals]
+        i_vals = [
+            (val - i_vals_min) / (i_vals_max - i_vals_min) + 0.1 * i for val in i_vals
+        ]
         xrd_data.append((th_vals, i_vals))
 
     min_x, max_x = 180, 0
@@ -47,7 +50,7 @@ def xrd(verbose=False) -> int:
         max_x = new_max_x if new_max_x > max_x else max_x
     assert min_x <= max_x
 
-    min_y, max_y = -0.05, 1.05 + (len(xrd_data))  * 0.1
+    min_y, max_y = -0.05, 1.05 + (len(xrd_data)) * 0.1
 
     if verbose:
         print("Import successful")
@@ -58,15 +61,21 @@ def xrd(verbose=False) -> int:
 
     worksheet = op.new_sheet("w", "XRD")
     for i, data in enumerate(xrd_data):
-        print("accessing columns " + str((i-1)*2) + " and " + str((i*2)-1))
-        worksheet.from_list(col=i*2, data=data[0], lname="2θ", units="deg.", axis="X")
-        worksheet.from_list(col=i*2+1, data=data[1], lname=input_paths[i].stem, units="r.u.", axis="Y")
+        print("accessing columns " + str((i - 1) * 2) + " and " + str((i * 2) - 1))
+        worksheet.from_list(col=i * 2, data=data[0], lname="2θ", units="deg.", axis="X")
+        worksheet.from_list(
+            col=i * 2 + 1,
+            data=data[1],
+            lname=input_paths[i].stem,
+            units="r.u.",
+            axis="Y",
+        )
 
     graph = op.new_graph()
     graph.set_int("aa", 1)
     layer_1 = graph[0]
     for column in range(0, worksheet.cols):
-        layer_1.add_plot(worksheet, column*2+1, column*2)
+        layer_1.add_plot(worksheet, column * 2 + 1, column * 2)
     layer_1.xlim = (min_x, max_x, 10)
     layer_1.ylim = (min_y, max_y)
     layer_1.group()  # doesn't work for single plot
@@ -109,56 +118,90 @@ def rietveld(verbose=False) -> int:
     h_vals, k_vals, l_vals, ph_vals, peak_vals = ([] for _ in range(5))
     # XRD Worksheet
     th_vals, obs_i_vals, calc_i_vals, bckg_i_vals, dif_vals = ([] for _ in range(5))
+    # Meta & Cell
+    prec_data = {}
+    cell_data = {}
 
     # Chek file type and fill "vals" accordingly
     for path in input_paths:
-        if match_file_type(path, "*.prf"):
-            hkl_data, xrd_data = path.read_text()[26:-6].split("\n 999\n")
-            for line in hkl_data.split("\n"):
+        text = path.read_text()
+        if match_text_type(text, "*.prf"):
+            hkl_data, xrd_data = text[26:-6].split("\n 999\n")
+            for line in hkl_data.splitlines():
                 h, k, l, _, ph, peak, *_ = line.split()
                 h_vals.append(int(h))
                 k_vals.append(int(k))
                 l_vals.append(int(l))
                 ph_vals.append(int(ph))
                 peak_vals.append(float(peak))
-            for line in xrd_data.split("\n"):
+            for line in xrd_data.splitlines():
                 th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
                 if not ((obs_i == "0") or (calc_i == "0") or (bckg == "0")):
                     th_vals.append(float(th))
                     obs_i_vals.append(float(obs_i))
                     calc_i_vals.append(float(calc_i))
                     bckg_i_vals.append(float(bckg))
-        elif match_file_type(path, "2Th_I.txt"):
-            for line in path.read_text()[:-1].split("\n"):
+        elif match_text_type(text, "2Th_I.txt"):
+            for line in text[:-1].splitlines():
                 h, k, l, _, ph, th, *_ = [0, 0, 0, 0, 0] + line.split()
                 h_vals.append(int(h))
                 k_vals.append(int(k))
                 l_vals.append(int(l))
                 ph_vals.append(int(ph))
                 peak_vals.append(float(th))
-        elif match_file_type(path, "data.txt"):
-            for line in path.read_text()[58:-1].split("\n"):
-                th, obs_i, bckg, calc_i, dif_i, *_ = line.split(",")
+        elif match_text_type(text, "data.txt"):
+            for line in text[58:-1].splitlines():
+                th, obs_i, bckg, calc_i, dif_i = line.split(",")
                 if not ((obs_i == "0") or (calc_i == "0") or (bckg == "0")):
                     th_vals.append(float(th))
                     obs_i_vals.append(float(obs_i))
                     calc_i_vals.append(float(calc_i))
                     bckg_i_vals.append(float(bckg))
                     dif_vals.append(float(dif_i))
-        elif match_file_type(path, "*.inp"):
-            pass
+        elif match_text_type(text, "*.inp"):
+            (
+                prec_data["r_wp"],
+                prec_data["r_exp"],
+                prec_data["r_p"],
+                _,
+                prec_data["gof"],
+            ) = map(float, text.splitlines()[2].split()[1::2])
+            for key, value in prec_data.items():
+                prec_data[key] = round(value, 2)
+            (
+                cell_data["a"],
+                cell_data["b"],
+                cell_data["c"],
+                cell_data["alpha"],
+                cell_data["beta"],
+                cell_data["gamma"],
+                cell_data["volume"],
+                cell_data["space_group"],
+                *_
+            ) = map(get_last_word, text[1048:1219].splitlines())
+            cell_data["space_group"] = cell_data["space_group"].strip("\"")
+            for key, value in cell_data.items():
+                cell_data[key] = format_uncertain_float(value)
         elif match_file_type(path, "*.cif"):
             pass
 
     # Normalization
     obs_i_vals_max = max(obs_i_vals)
     obs_i_vals_min = min(obs_i_vals)
-    obs_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in obs_i_vals]
-    calc_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in calc_i_vals]
-    bckg_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in bckg_i_vals]
+    obs_i_vals = [
+        (val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in obs_i_vals
+    ]
+    calc_i_vals = [
+        (val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min)
+        for val in calc_i_vals
+    ]
+    bckg_i_vals = [
+        (val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min)
+        for val in bckg_i_vals
+    ]
 
     # Calculating dif values
-    dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
+    dif_vals = [obs_i - calc_i for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
     delta_dif_vals = min(dif_vals) - max(dif_vals)
     dif_vals = [val + delta_dif_vals for val in dif_vals]
 
@@ -177,11 +220,19 @@ def rietveld(verbose=False) -> int:
     hkl_worksheet.from_list(col=2, data=l_vals, lname="l", units="", axis="")
     hkl_worksheet.from_list(col=3, data=ph_vals, lname="Phase", units="", axis="")
     hkl_worksheet.from_list(col=4, data=peak_vals, lname="2θ", units="deg.", axis="X")
-    hkl_worksheet.from_list(col=5, data=[-0.03 for _ in h_vals], lname="hkl", units="", axis="Y")
+    hkl_worksheet.from_list(
+        col=5, data=[-0.03 for _ in h_vals], lname="hkl", units="", axis="Y"
+    )
     xrd_worksheet.from_list(col=0, data=th_vals, lname="2θ", units="deg.", axis="X")
-    xrd_worksheet.from_list(col=1, data=obs_i_vals, lname="I obs", units="r.u.", axis="Y")
-    xrd_worksheet.from_list(col=2, data=calc_i_vals, lname="I calc", units="r.u.", axis="Y")
-    xrd_worksheet.from_list(col=3, data=bckg_i_vals, lname="I bckg", units="r.u.", axis="Y")
+    xrd_worksheet.from_list(
+        col=1, data=obs_i_vals, lname="I obs", units="r.u.", axis="Y"
+    )
+    xrd_worksheet.from_list(
+        col=2, data=calc_i_vals, lname="I calc", units="r.u.", axis="Y"
+    )
+    xrd_worksheet.from_list(
+        col=3, data=bckg_i_vals, lname="I bckg", units="r.u.", axis="Y"
+    )
     xrd_worksheet.from_list(col=4, data=dif_vals, lname="I dif", units="r.u.", axis="Y")
 
     graph = op.new_graph()

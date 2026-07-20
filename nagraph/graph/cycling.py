@@ -1,6 +1,6 @@
 import pandas as pd
 
-from util import save_project_with_suffix, open_files_of_types
+from util.util import save_project_with_suffix, open_files_of_types
 
 
 def steps(verbose=False) -> int:

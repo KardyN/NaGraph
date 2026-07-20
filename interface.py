@@ -1,7 +1,7 @@
 from nagraph.graph import xrd
 import tkinter as tk
 
-from util import threaded
+from util.deco import threaded
 
 
 class Interface:
