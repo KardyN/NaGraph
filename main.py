@@ -3,6 +3,7 @@ from pathlib import Path
 
 from config import Config
 from interface import Interface
+from nagraph.gcloud.access import CloudAccessor
 
 
 def main():
@@ -10,6 +11,7 @@ def main():
     Interface(root)
     folder = Path(__name__).resolve().parent
     Config(folder)
+    CloudAccessor()
     root.mainloop()
 
     # while True:

@@ -1,13 +1,15 @@
 from nagraph.graph import xrd
 import tkinter as tk
 
+from util import threaded
+
 
 class Interface:
     def __init__(self, root):
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
-        root_width = 1200
-        root_height = 700
+        root_width = 600
+        root_height = 350
         root.title("NaGraph")
         root.resizable(False, False)
         root.geometry(
@@ -70,27 +72,33 @@ class Interface:
         btn_exit.grid(column=4, row=3, columnspan=2, ipadx=1, ipady=1, padx=1, pady=1)
 
 
+@threaded
 def graph_xrd():
     xrd.xrd(verbose=True)
     return None
 
 
+@threaded
 def graph_rietveld():
     xrd.rietveld(verbose=True)
     return None
 
 
+@threaded
 def graph_gc_rates():
     return None
 
 
+@threaded
 def graph_gc_long():
     return None
 
 
+@threaded
 def test1():
     return None
 
 
+@threaded
 def test2():
     return None

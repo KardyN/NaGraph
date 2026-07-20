@@ -1,60 +1,72 @@
 import math
-import re
-from pathlib import Path
 
 import originpro as op
 import pandas as pd
-from openpyxl.descriptors import String
-from openpyxl.pivot.fields import Boolean
 
-from util import save_project_with_suffix, open_files_of_types, assert_file_is_hkl_peaks
+from util import (
+    save_project_with_suffix,
+    open_files_of_types,
+    match_file_type,
+    threaded,
+)
 
 
+@threaded
 def xrd(verbose=False) -> int:
 
-    input_paths = open_files_of_types(["xyd"], 10, True)
+    input_paths = open_files_of_types(["xyd"], True)
 
     output_path = save_project_with_suffix("xrd", True)
 
     if verbose:
         print("Importing data...")
-    df = pd.DataFrame()
-    i = 0
-    for path in input_paths:
-        data = path.read_text()[:-1]  # Avg. xrd file size - 320kB
-        th_vals = []
-        i_vals = []
-        for line in data.split("\n"):
+
+    xrd_data = []
+
+    for i, path in enumerate(input_paths):
+        if not match_file_type(path, "*.xyd"):
+            raise Exception("Invalid internal data structure")
+
+        th_vals, i_vals = ([] for _ in range(2))
+
+        for line in path.read_text()[:-1].split("\n"):
             x, y = line.strip().split()
             th_vals.append(float(x))
             i_vals.append(float(y))
+
         i_vals_max = max(i_vals)
-        i_vals = [val / i_vals_max + i * 0.1 for val in i_vals]
-        df = pd.concat(
-            [
-                df,
-                pd.DataFrame(th_vals, columns=["2θ"]),
-                pd.DataFrame(i_vals, columns=[path.stem]),
-            ],
-            axis=1,
-        )
-        i += 1
-    df = df.loc[:, ~df.columns.duplicated()].copy()
-    min_x, max_x = df["2θ"].min(), df["2θ"].max()
-    min_y, max_y = round(min(df.iloc[:, 1:].min()), 3) - 0.045, 1.045 + i * 0.1
+        i_vals_min = min(i_vals)
+        i_vals = [(val - i_vals_min) / (i_vals_max - i_vals_min) + 0.1 * i for val in i_vals]
+        xrd_data.append((th_vals, i_vals))
+
+    min_x, max_x = 180, 0
+    for data in xrd_data:
+        new_min_x = min(data[0])
+        new_max_x = max(data[0])
+        min_x = new_min_x if new_min_x < min_x else min_x
+        max_x = new_max_x if new_max_x > max_x else max_x
+    assert min_x <= max_x
+
+    min_y, max_y = -0.05, 1.05 + (len(xrd_data))  * 0.1
+
     if verbose:
         print("Import successful")
 
     if verbose:
         print("Starting OriginPro...")
     op.set_show()
+
     worksheet = op.new_sheet("w", "XRD")
-    worksheet.from_df(df)
+    for i, data in enumerate(xrd_data):
+        print("accessing columns " + str((i-1)*2) + " and " + str((i*2)-1))
+        worksheet.from_list(col=i*2, data=data[0], lname="2θ", units="deg.", axis="X")
+        worksheet.from_list(col=i*2+1, data=data[1], lname=input_paths[i].stem, units="r.u.", axis="Y")
+
     graph = op.new_graph()
     graph.set_int("aa", 1)
     layer_1 = graph[0]
-    for column in range(1, worksheet.cols):
-        layer_1.add_plot(worksheet, column, 0)
+    for column in range(0, worksheet.cols):
+        layer_1.add_plot(worksheet, column*2+1, column*2)
     layer_1.xlim = (min_x, max_x, 10)
     layer_1.ylim = (min_y, max_y)
     layer_1.group()  # doesn't work for single plot
@@ -86,94 +98,98 @@ def xrd(verbose=False) -> int:
 
 def rietveld(verbose=False) -> int:
 
-    input_paths = open_files_of_types(["prf", "txt", "inp", "cif"], 5, verbose)
+    input_paths = open_files_of_types(["prf", "txt", "inp", "cif"], verbose)
 
     output_path = save_project_with_suffix("rietveld", verbose)
 
     if verbose:
         print("Importing data...")
 
-    if len(input_paths) == 1:
-        hkl_data, xrd_data = input_paths.read_text()[26:-6].split("\n 999\n")
+    # HKL Worksheet
+    h_vals, k_vals, l_vals, ph_vals, peak_vals = ([] for _ in range(5))
+    # XRD Worksheet
+    th_vals, obs_i_vals, calc_i_vals, bckg_i_vals, dif_vals = ([] for _ in range(5))
 
-    h_vals, k_vals, l_vals, ph_vals, th_vals = ([] for _ in range(5))
+    # Chek file type and fill "vals" accordingly
+    for path in input_paths:
+        if match_file_type(path, "*.prf"):
+            hkl_data, xrd_data = path.read_text()[26:-6].split("\n 999\n")
+            for line in hkl_data.split("\n"):
+                h, k, l, _, ph, peak, *_ = line.split()
+                h_vals.append(int(h))
+                k_vals.append(int(k))
+                l_vals.append(int(l))
+                ph_vals.append(int(ph))
+                peak_vals.append(float(peak))
+            for line in xrd_data.split("\n"):
+                th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
+                if not ((obs_i == "0") or (calc_i == "0") or (bckg == "0")):
+                    th_vals.append(float(th))
+                    obs_i_vals.append(float(obs_i))
+                    calc_i_vals.append(float(calc_i))
+                    bckg_i_vals.append(float(bckg))
+        elif match_file_type(path, "2Th_I.txt"):
+            for line in path.read_text()[:-1].split("\n"):
+                h, k, l, _, ph, th, *_ = [0, 0, 0, 0, 0] + line.split()
+                h_vals.append(int(h))
+                k_vals.append(int(k))
+                l_vals.append(int(l))
+                ph_vals.append(int(ph))
+                peak_vals.append(float(th))
+        elif match_file_type(path, "data.txt"):
+            for line in path.read_text()[58:-1].split("\n"):
+                th, obs_i, bckg, calc_i, dif_i, *_ = line.split(",")
+                if not ((obs_i == "0") or (calc_i == "0") or (bckg == "0")):
+                    th_vals.append(float(th))
+                    obs_i_vals.append(float(obs_i))
+                    calc_i_vals.append(float(calc_i))
+                    bckg_i_vals.append(float(bckg))
+                    dif_vals.append(float(dif_i))
+        elif match_file_type(path, "*.inp"):
+            pass
+        elif match_file_type(path, "*.cif"):
+            pass
 
-    if len(input_paths) == 1:
-        for line in hkl_data.split("\n"):
-            h, k, l, _, ph, th, *_ = line.split()
-            h_vals.append(int(h))
-            k_vals.append(int(k))
-            l_vals.append(int(l))
-            ph_vals.append(int(ph))
-            th_vals.append(float(th))
-    else:
-        for line in input_paths[0].read_text().split("\n"):
-            h, k, l, _, ph, th, *_ = [0, 0, 0, 0, 0] + line.split()
-            h_vals.append(int(h))
-            k_vals.append(int(k))
-            l_vals.append(int(l))
-            ph_vals.append(int(ph))
-            th_vals.append(float(th))
-
-    hkl_df = pd.concat(
-        [
-            pd.DataFrame(h_vals, columns=["h"]),
-            pd.DataFrame(k_vals, columns=["k"]),
-            pd.DataFrame(l_vals, columns=["l"]),
-            pd.DataFrame(ph_vals, columns=["Phase"]),
-            pd.DataFrame(th_vals, columns=["2θ"]),
-            pd.DataFrame([-0.03 for _ in range(len(h_vals))], columns=["hkl"]),
-        ],
-        axis=1,
-    )
-
-    th_vals, obs_i_vals, calc_i_vals, bckg_vals, dif_vals = ([] for _ in range(5))
-
-    if len(input_paths) == 1:
-        for line in xrd_data.split("\n"):
-            th, obs_i, calc_i, _, _, _, _, _, bckg, *_ = line.split()
-            th_vals.append(float(th))
-            obs_i_vals.append(float(obs_i))
-            calc_i_vals.append(float(calc_i))
-            bckg_vals.append(float(bckg))
-    else:
-        
-
+    # Normalization
     obs_i_vals_max = max(obs_i_vals)
-    obs_i_vals = [val / obs_i_vals_max for val in obs_i_vals]
-    calc_i_vals = [val / obs_i_vals_max for val in calc_i_vals]
-    bckg_vals = [val / obs_i_vals_max for val in bckg_vals]
-    dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
-    dif_min_y, dif_max_y = min(dif_vals), max(dif_vals)
-    dif_vals = [val - (dif_max_y - dif_min_y) for val in dif_vals]
+    obs_i_vals_min = min(obs_i_vals)
+    obs_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in obs_i_vals]
+    calc_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in calc_i_vals]
+    bckg_i_vals = [(val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in bckg_i_vals]
 
-    xrd_df = pd.concat(
-        [
-            pd.DataFrame(th_vals, columns=["2θ"]),
-            pd.DataFrame(obs_i_vals, columns=["I obs"]),
-            pd.DataFrame(calc_i_vals, columns=["I calc"]),
-            pd.DataFrame(bckg_vals, columns=["I bckg"]),
-            pd.DataFrame(dif_vals, columns=["I dif"]),
-        ],
-        axis=1,
-    )
+    # Calculating dif values
+    dif_vals = [obs_i - calc_i - 0.05 for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
+    delta_dif_vals = min(dif_vals) - max(dif_vals)
+    dif_vals = [val + delta_dif_vals for val in dif_vals]
 
     if verbose:
         print("Import successful")
 
     if verbose:
         print("Starting OriginPro...")
+
     op.set_show()
+
     hkl_worksheet = op.new_sheet("w", "hkl")
     xrd_worksheet = op.new_sheet("w", "XRD")
-    hkl_worksheet.from_df(hkl_df)
-    xrd_worksheet.from_df(xrd_df)
+    hkl_worksheet.from_list(col=0, data=h_vals, lname="h", units="", axis="")
+    hkl_worksheet.from_list(col=1, data=k_vals, lname="k", units="", axis="")
+    hkl_worksheet.from_list(col=2, data=l_vals, lname="l", units="", axis="")
+    hkl_worksheet.from_list(col=3, data=ph_vals, lname="Phase", units="", axis="")
+    hkl_worksheet.from_list(col=4, data=peak_vals, lname="2θ", units="deg.", axis="X")
+    hkl_worksheet.from_list(col=5, data=[-0.03 for _ in h_vals], lname="hkl", units="", axis="Y")
+    xrd_worksheet.from_list(col=0, data=th_vals, lname="2θ", units="deg.", axis="X")
+    xrd_worksheet.from_list(col=1, data=obs_i_vals, lname="I obs", units="r.u.", axis="Y")
+    xrd_worksheet.from_list(col=2, data=calc_i_vals, lname="I calc", units="r.u.", axis="Y")
+    xrd_worksheet.from_list(col=3, data=bckg_i_vals, lname="I bckg", units="r.u.", axis="Y")
+    xrd_worksheet.from_list(col=4, data=dif_vals, lname="I dif", units="r.u.", axis="Y")
+
     graph = op.new_graph()
     graph.set_int("aa", 1)
     layer_1 = graph[0]
 
-    min_x, max_x = math.floor(xrd_df["2θ"].min()), math.ceil(xrd_df["2θ"].max())
-    i_min_y, i_max_y = xrd_df.iloc[:, 1].min() - (dif_max_y - dif_min_y) - 0.15, 1.05
+    min_x, max_x = math.floor(min(th_vals)), math.ceil(max(th_vals))
+    i_min_y, i_max_y = delta_dif_vals - 0.15, 1.05
     layer_1.xlim = (min_x, max_x, 10)
     layer_1.ylim = (i_min_y, i_max_y)
 
