@@ -1,26 +1,28 @@
-import math
+import logging
+from math import floor, ceil
 
 import originpro as op
 
-from util.util import (
+from util.deco import threaded
+from util.help import (
     save_project_with_suffix,
     open_files_of_types,
     match_file_type,
     match_text_type,
-    get_last_word, format_uncertain_float,
+    get_last_word,
+    format_uncertain_float,
 )
-from util.deco import threaded
+
+log = logging.getLogger(__name__)
 
 
 @threaded
-def xrd(verbose=False) -> int:
+def xrd():
+    input_paths = open_files_of_types(["xyd"])
 
-    input_paths = open_files_of_types(["xyd"], True)
+    output_path = save_project_with_suffix("xrd")
 
-    output_path = save_project_with_suffix("xrd", True)
-
-    if verbose:
-        print("Importing data...")
+    log.info("Importing data...")
 
     xrd_data = []
 
@@ -35,33 +37,20 @@ def xrd(verbose=False) -> int:
             th_vals.append(float(x))
             i_vals.append(float(y))
 
-        i_vals_max = max(i_vals)
-        i_vals_min = min(i_vals)
+        i_vals_max, i_vals_min = max(i_vals), min(i_vals)
         i_vals = [
             (val - i_vals_min) / (i_vals_max - i_vals_min) + 0.1 * i for val in i_vals
         ]
         xrd_data.append((th_vals, i_vals))
 
-    min_x, max_x = 180, 0
-    for data in xrd_data:
-        new_min_x = min(data[0])
-        new_max_x = max(data[0])
-        min_x = new_min_x if new_min_x < min_x else min_x
-        max_x = new_max_x if new_max_x > max_x else max_x
-    assert min_x <= max_x
+    log.info("Import successful")
 
-    min_y, max_y = -0.05, 1.05 + (len(xrd_data)) * 0.1
+    log.info("Starting OriginPro...")
 
-    if verbose:
-        print("Import successful")
-
-    if verbose:
-        print("Starting OriginPro...")
     op.set_show()
 
     worksheet = op.new_sheet("w", "XRD")
     for i, data in enumerate(xrd_data):
-        print("accessing columns " + str((i - 1) * 2) + " and " + str((i * 2) - 1))
         worksheet.from_list(col=i * 2, data=data[0], lname="2θ", units="deg.", axis="X")
         worksheet.from_list(
             col=i * 2 + 1,
@@ -76,8 +65,14 @@ def xrd(verbose=False) -> int:
     layer_1 = graph[0]
     for column in range(0, worksheet.cols):
         layer_1.add_plot(worksheet, column * 2 + 1, column * 2)
+    min_x, max_x = 180, 0
+    for data in xrd_data:
+        new_min_x, new_max_x = min(data[0]), max(data[0])
+        min_x = new_min_x if new_min_x < min_x else min_x
+        max_x = new_max_x if new_max_x > max_x else max_x
+    assert min_x <= max_x
     layer_1.xlim = (min_x, max_x, 10)
-    layer_1.ylim = (min_y, max_y)
+    layer_1.ylim = (-0.05, 1.05 + (len(xrd_data)) * 0.1)
     layer_1.group()  # doesn't work for single plot
     layer_1.plot_list()[0].colormap = "Fire"  # doesn't work for single plot
     layer_1.plot_list()[0].set_int("line.width", 1)
@@ -89,38 +84,31 @@ def xrd(verbose=False) -> int:
     layer_1.set_int("y.ticks", 0)
     layer_1.set_int("y.showlabel", 0)
     legend = layer_1.label("Legend")
-    xto = layer_1.get_float("x.to")
-    yto = layer_1.get_float("y.to")
     legend.set_int("showframe", 0)
-    legend.set_float("x", xto - legend.get_float("dx") / 2)
-    legend.set_float("y", yto - legend.get_float("dy") / 2)
+    legend.set_float("x", layer_1.get_float("x.to") - legend.get_float("dx") / 2)
+    legend.set_float("y", layer_1.get_float("y.to") - legend.get_float("dy") / 2)
 
-    if verbose:
-        print("Saving project...")
+    log.info("Saving project...")
     graph.save_fig(str(output_path.with_suffix(".png")))
     op.save(str(output_path.with_suffix(".opju")))
     op.exit()
-    if verbose:
-        print("Saved project at " + (str(output_path.with_suffix(".opju"))))
-    return 0
+    log.info("Saved project at " + (str(output_path.with_suffix(".opju"))))
 
 
-def rietveld(verbose=False) -> int:
+@threaded
+def rietveld():
+    input_paths = open_files_of_types(["prf", "txt", "inp", "cif"])
 
-    input_paths = open_files_of_types(["prf", "txt", "inp", "cif"], verbose)
+    output_path = save_project_with_suffix("rietveld")
 
-    output_path = save_project_with_suffix("rietveld", verbose)
-
-    if verbose:
-        print("Importing data...")
+    log.info("Importing data...")
 
     # HKL Worksheet
     h_vals, k_vals, l_vals, ph_vals, peak_vals = ([] for _ in range(5))
     # XRD Worksheet
     th_vals, obs_i_vals, calc_i_vals, bckg_i_vals, dif_vals = ([] for _ in range(5))
-    # Meta & Cell
-    prec_data = {}
-    cell_data = {}
+    # Precision & Cell parameters
+    prec_data, cell_data = ({} for _ in range(2))
 
     # Chek file type and fill "vals" accordingly
     for path in input_paths:
@@ -177,17 +165,26 @@ def rietveld(verbose=False) -> int:
                 cell_data["gamma"],
                 cell_data["volume"],
                 cell_data["space_group"],
-                *_
+                *_,
             ) = map(get_last_word, text[1048:1219].splitlines())
-            cell_data["space_group"] = cell_data["space_group"].strip("\"")
+            cell_data["space_group"] = cell_data["space_group"].strip('"')
             for key, value in cell_data.items():
                 cell_data[key] = format_uncertain_float(value)
-        elif match_file_type(path, "*.cif"):
-            pass
+        elif match_text_type(text, "*.cif"):
+            text = text.splitlines()
+            (
+                cell_data["a"],
+                cell_data["b"],
+                cell_data["c"],
+                cell_data["alpha"],
+                cell_data["beta"],
+                cell_data["gamma"],
+                cell_data["volume"],
+                cell_data["space_group"],
+            ) = map(get_last_word, text[3:11])
 
     # Normalization
-    obs_i_vals_max = max(obs_i_vals)
-    obs_i_vals_min = min(obs_i_vals)
+    obs_i_vals_min, obs_i_vals_max = min(obs_i_vals), max(obs_i_vals)
     obs_i_vals = [
         (val - obs_i_vals_min) / (obs_i_vals_max - obs_i_vals_min) for val in obs_i_vals
     ]
@@ -202,14 +199,12 @@ def rietveld(verbose=False) -> int:
 
     # Calculating dif values
     dif_vals = [obs_i - calc_i for obs_i, calc_i in zip(obs_i_vals, calc_i_vals)]
-    delta_dif_vals = min(dif_vals) - max(dif_vals)
-    dif_vals = [val + delta_dif_vals for val in dif_vals]
+    delta_dif_vals = max(dif_vals) - min(dif_vals)
+    dif_vals = [val - delta_dif_vals / 2 - 0.06 for val in dif_vals]
 
-    if verbose:
-        print("Import successful")
+    log.info("Import successful")
 
-    if verbose:
-        print("Starting OriginPro...")
+    log.info("Starting OriginPro...")
 
     op.set_show()
 
@@ -239,10 +234,8 @@ def rietveld(verbose=False) -> int:
     graph.set_int("aa", 1)
     layer_1 = graph[0]
 
-    min_x, max_x = math.floor(min(th_vals)), math.ceil(max(th_vals))
-    i_min_y, i_max_y = delta_dif_vals - 0.15, 1.05
-    layer_1.xlim = (min_x, max_x, 10)
-    layer_1.ylim = (i_min_y, i_max_y)
+    layer_1.xlim = (floor(min(th_vals)), ceil(max(th_vals)), 10)
+    layer_1.ylim = (-delta_dif_vals - 0.11, 1.05)
 
     obs_i_plot = layer_1.add_plot(xrd_worksheet, 1, 0, type="s")
     calc_i_plot = layer_1.add_plot(xrd_worksheet, 2, 0, type="l")
@@ -277,17 +270,12 @@ def rietveld(verbose=False) -> int:
 
     layer_1.set_int("y.showlabel", 0)
     legend = layer_1.label("Legend")
-    xto = layer_1.get_float("x.to")
-    yto = layer_1.get_float("y.to")
     legend.set_int("showframe", 0)
-    legend.set_float("x", xto - legend.get_float("dx") / 2)
-    legend.set_float("y", yto - legend.get_float("dy") / 2)
+    legend.set_float("x", layer_1.get_float("x.to") - legend.get_float("dx") / 2)
+    legend.set_float("y", layer_1.get_float("y.to") - legend.get_float("dy") / 2)
 
-    if verbose:
-        print("Saving project...")
+    log.info("Saving project...")
     graph.save_fig(str(output_path.with_suffix(".png")))
     op.save(str(output_path.with_suffix(".opju")))
     op.exit()
-    if verbose:
-        print("Saved project at " + (str(output_path.with_suffix(".opju"))))
-    return 0
+    log.info("Saved project at " + (str(output_path.with_suffix(".opju"))))
