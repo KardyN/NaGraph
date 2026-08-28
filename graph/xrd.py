@@ -13,7 +13,7 @@ from util.help import (
     format_uncertain_float,
 )
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(f"nagraph.{__name__}")
 
 
 @threaded

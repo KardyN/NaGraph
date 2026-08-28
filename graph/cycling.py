@@ -7,7 +7,7 @@ import pylightxl as xl
 from util.deco import threaded
 from util.help import save_project_with_suffix, open_files_of_types
 
-log = logging.getLogger(__name__)
+log = logging.getLogger(f"nagraph.{__name__}")
 
 
 @threaded
@@ -81,9 +81,21 @@ def rates():
         worksheet = op.new_sheet("w", key)
         for i, (current, (spec_cap_vals, voltage_vals)) in enumerate(values.items()):
             worksheet.from_list(
-                col=i * 2, data=spec_cap_vals, lname="Spec. Cap.", units="mAh/g", axis="X", comments=str(current)
+                col=i * 2,
+                data=spec_cap_vals,
+                lname="Spec. Cap.",
+                units="mAh/g",
+                axis="X",
+                comments=str(current),
             )
-            worksheet.from_list(col=i * 2 + 1, data=voltage_vals, lname="Voltage", units="V", axis="Y", comments=str(current))
+            worksheet.from_list(
+                col=i * 2 + 1,
+                data=voltage_vals,
+                lname="Voltage",
+                units="V",
+                axis="Y",
+                comments=str(current),
+            )
         worksheets.append(worksheet)
         graph = op.new_graph(lname=key)
         graph.set_int("aa", 1)

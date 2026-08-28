@@ -1,17 +1,18 @@
-from pathlib import Path
+import logging
 
-from gui.app import App
-from util.config import Config
 from gcloud.access import CloudAccessor
+from gui.app import App
 from util.logger import Logger
+
+log = logging.getLogger("nagraph")
 
 
 def main():
-    Logger(__name__)
+    Logger()
+    log.info("NaGraph started")
     app = App()
-    Config(Path(__name__).resolve().parent)
-    CloudAccessor()
     app.mainloop()
+    log.info("NaGraph closed")
 
 
 if __name__ == "__main__":
